@@ -20,9 +20,9 @@ The Schema Manager Backend is a robust and secure system designed to store and m
 
 * 📥 Bulk Data Ingestion – Ingest data into schemas via:
 
-* Custom forms
+   * Custom forms
 
-* Bulk upload using XLSX files
+   * Bulk upload using XLSX files
 
 * 🔍 Data Filtering & Pagination – View paginated and filtered data through the UI.
 

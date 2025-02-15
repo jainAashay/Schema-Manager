@@ -16,6 +16,9 @@ Looking for a structured and efficient way to manage your data? Schema Manager i
 
 🔹 Fast & Responsive UI – Manage everything effortlessly through an interactive web interface.
 
+### 🌍 Frontend-UI
+The frontend/UI for this schema-manager is integrated and hosted along with my portfolio website. The code for the same can be found here : https://github.com/jainAashay/Portfolio-Website/tree/master/src/Components/SchemaManager
+
 ### 💡 Short on time? Try it out instantly with demo credentials!
 
       📧 Email: demo@gmail.com

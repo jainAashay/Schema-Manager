@@ -18,8 +18,8 @@ Looking for a structured and efficient way to manage your data? Schema Manager i
 
 ### 💡 Short on time? Try it out instantly with demo credentials!
 
-      📧 Email: jainaashay123@gmail.com
-      🔑 Password: Aashay123
+      📧 Email: demo@gmail.com
+      🔑 Password: demo
 
 Start managing your data efficiently today! 🚀
 

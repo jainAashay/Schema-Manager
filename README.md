@@ -33,7 +33,7 @@ Start managing your data efficiently today! 🚀
 
 * 📝 CRUD Operations – Perform insert, update, read, and delete operations on schema data.
 
-* 🌍 Responsive UI – Manage schemas and data through an interactive web interface hosted at: "".
+* 🌍 Responsive UI – Manage schemas and data through an interactive web interface hosted at: https://aashay-jain.netlify.app/schema-manager.
 
 * 🔒 Authentication & Security – User authentication with secure account creation and login.
 

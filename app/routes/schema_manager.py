@@ -7,6 +7,7 @@ from pymongo import MongoClient,ReplaceOne
 from werkzeug.utils import secure_filename
 from io import BytesIO
 import pandas as pd
+import os
 
 schema_manager_bp = Blueprint('schema_manager',__name__)
 
@@ -237,7 +238,7 @@ def upload_file(schema):
         file = request.files['file']
 
         if file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
+            return jsonify({"message": "No selected file"}), 400
 
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
@@ -249,7 +250,7 @@ def upload_file(schema):
 
             records = data.to_dict(orient='records')
             if schema not in db_schema_manager.list_collection_names():
-                return jsonify({"error": f"Collection '{schema}' does not exist."}), 400
+                return jsonify({"message": f"Collection '{schema}' does not exist."}), 400
     
             result = db_schema_manager.get_collection(schema).insert_many(records)
             session.commit_transaction()
@@ -258,14 +259,14 @@ def upload_file(schema):
 
         else:
             session.abort_transaction()
-            return jsonify({"error": "Invalid file type. Only CSV and Excel are allowed"}), 400
+            return jsonify({"message": "Invalid file type. Only CSV and Excel are allowed"}), 400
 
     except Exception as e:
         session.abort_transaction()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": str(e)}), 500
 
-    finally:
-        os.remove(os.path.join("uploads", filename))
+    # finally:
+    #     os.remove(os.path.join("uploads", filename))
 
 
 @schema_manager_bp.route('/schema/<schema>/data/delete/<id>', methods=['DELETE'])

@@ -4,6 +4,7 @@ import os
 import base64
 import logging
 from app.config.config import *
+from app.utils.email_sender import *
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -50,8 +51,7 @@ def register():
     else:
         login_data.insert_one(user)
 
-    # You need to import your email sender here
-    # email_sender.send_email(email, verification_url, True)
+    send_email(email, verification_url, True)
 
     return jsonify({'message': 'A verification link has been sent to your email.'}), 200
 

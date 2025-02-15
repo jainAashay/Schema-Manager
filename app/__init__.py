@@ -7,7 +7,8 @@ def create_app():
     app.config.from_object(Config)
 
     # Initialize extensions
-    CORS(app, resources={r"/*": {"origins": ["https://master--aashay-jain.netlify.app", "http://localhost:3000", "https://aashay-jain.netlify.app"]}})
+    #CORS(app, resources={r"/*": {"origins": ["https://master--aashay-jain.netlify.app", "http://localhost:3000", "https://aashay-jain.netlify.app"]}})
+    CORS(app, supports_credentials=True, resources={r"/*": { "origins": ["https://master--aashay-jain.netlify.app","http://localhost:3000","https://aashay-jain.netlify.app"],"methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],"allow_headers": ["Content-Type", "Authorization"] }})
     bcrypt.init_app(app)
     jwt.init_app(app)
 

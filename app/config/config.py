@@ -1,9 +1,9 @@
-import os
 from datetime import timedelta
 from urllib.parse import quote_plus
 from flask_bcrypt import Bcrypt
 from pymongo import MongoClient
 from flask_jwt_extended import JWTManager
+import os
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY")

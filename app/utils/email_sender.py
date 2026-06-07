@@ -7,23 +7,27 @@ import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 smtp_server = "smtp.gmail.com"
-port = 587  
+port = 587
 sender_email = "aashay1000@gmail.com"
 sender_password = os.getenv("GMAIL_PASSWORD")
-server=smtplib.SMTP(smtp_server, port)
-server.connect(smtp_server, port)
-server.starttls()
-server.login(sender_email, sender_password)
 
 
-def send_email(email, msg,verification):
-    
+def _connect_smtp():
+    server = smtplib.SMTP(smtp_server, port)
+    server.starttls()
+    server.login(sender_email, sender_password)
+    return server
+
+
+def send_email(email, msg, verification):
+    server = _connect_smtp()
     if verification:
-        msg=create_verification_email(email,msg)
+        msg = create_verification_email(email, msg)
         server.sendmail(sender_email, email, msg.as_string())
     else:
-        logging.info(str(email)+' '+str(msg))
-        server.sendmail(sender_email, email, msg) 
+        logging.info(str(email) + ' ' + str(msg))
+        server.sendmail(sender_email, email, msg)
+    server.quit()
 
 def create_verification_email(email,verification_url):
     msg = MIMEMultipart("alternative")

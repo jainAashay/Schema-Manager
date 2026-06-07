@@ -18,7 +18,7 @@ password = os.getenv("PASSWORD")
 username = quote_plus(username)
 password = quote_plus(password)
 
-cluster = MongoClient(f"mongodb://{username}:{password}@mongocluster-shard-00-00.nw1nz.mongodb.net:27017,mongocluster-shard-00-01.nw1nz.mongodb.net:27017,mongocluster-shard-00-02.nw1nz.mongodb.net:27017/Portfolio_Website?appName=MongoCluster&ssl=true&authSource=admin")
+cluster = MongoClient(f"mongodb://{username}:{password}@mongocluster-shard-00-00.nw1nz.mongodb.net:27017,mongocluster-shard-00-01.nw1nz.mongodb.net:27017,mongocluster-shard-00-02.nw1nz.mongodb.net:27017/Portfolio_Website?appName=MongoCluster&tls=true&authSource=admin")
 db=cluster["Portfolio_Website"]
 login_data = db["Login_Data"]
 

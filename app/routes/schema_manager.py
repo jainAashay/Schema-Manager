@@ -86,32 +86,39 @@ def get_documents(schema):
         request_data = request.get_json()
         filter_params = request_data.get('filter_params', {})
         query_params = request_data.get('query_params', {})
-        
         page_number = int(query_params.get('page_number', 1))
         page_size = int(query_params.get('page_size', 20))
-
-        offset = (page_number-1) * page_size
+        offset = (page_number - 1) * page_size
 
         claims = get_jwt()
         user = schema_data.find_one({'username': claims.get('username')})
-        schema = user['username'] + '_' + schema
+        full_schema_name = user['username'] + '_' + schema
 
-        # Get default filters if none are provided
-        filters = next((s['filters'] for s in user['schemas'] if s['name'] == schema), None)
+        schema_doc = next((s for s in user['schemas'] if s['name'] == full_schema_name), None)
+        filters = schema_doc.get('filters', []) if schema_doc else []
+        field_definitions = schema_doc.get('field_definitions', []) if schema_doc else []
+        strict = schema_doc.get('strict', False) if schema_doc else False
 
-        # Apply filters to query
-        collection = db_schema_manager.get_collection(schema)
-        documents = collection.find(filter_params).skip(offset).limit(page_size)
-        total_count=collection.count_documents(filter_params)
+        mongo_query = build_mongo_filter(filter_params, field_definitions)
 
-        # Process documents
+        collection = db_schema_manager.get_collection(full_schema_name)
+        documents = collection.find(mongo_query).skip(offset).limit(page_size)
+        total_count = collection.count_documents(mongo_query)
+
         documents_list = list(documents)
         keys = set()
         for doc in documents_list:
             keys.update(doc.keys())
             doc['_id'] = str(doc['_id'])
 
-        return jsonify({"total_count": total_count,"data": documents_list,"keys": list(keys),"filters": filters}), 200
+        return jsonify({
+            "total_count": total_count,
+            "data": documents_list,
+            "keys": sorted(list(keys)),
+            "filters": filters,
+            "field_definitions": field_definitions,
+            "strict": strict,
+        }), 200
 
     except Exception as e:
         logging.error(str(e))
@@ -175,8 +182,9 @@ def view_all_schemas():
         if not user:
             return jsonify({'schemas':schemas}),200
         
+        prefix = user['username'] + '_'
         for schema in user['schemas']:
-            schema['name']=schema['name'].split('_')[1]
+            schema['name'] = schema['name'][len(prefix):]
             schemas.append(schema)
         return jsonify({'schemas':schemas}),200
 
@@ -188,31 +196,39 @@ def view_all_schemas():
 @jwt_required()
 def insertData(schema):
     if not checkLogin():
-        return jsonify({ "message" : "Unauthored. Please log in"}), 401
+        return jsonify({"message": "Unauthored. Please log in"}), 401
 
     try:
-        claims=get_jwt()
+        claims = get_jwt()
         user = schema_data.find_one({'username': claims.get('username')})
-        schema=user['username']+'_'+schema
-        data=request.get_json()['data']
+        full_schema_name = user['username'] + '_' + schema
 
+        schema_doc = next((s for s in user['schemas'] if s['name'] == full_schema_name), None)
+        strict = schema_doc.get('strict', False) if schema_doc else False
+        field_definitions = schema_doc.get('field_definitions', []) if schema_doc else []
+
+        data = request.get_json().get('data', [])
         if not data:
             return jsonify({"error": "No data provided"}), 400
-
         if not isinstance(data, list):
             return jsonify({"error": "Data should be a list of documents"}), 400
-        
-        result = db_schema_manager.get_collection(schema).insert_many(data)
-        
-        return jsonify({ "message": "Data inserted successfully","inserted_ids": [str(id) for id in result.inserted_ids]}), 200
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        if strict:
+            coerced = []
+            for i, doc in enumerate(data):
+                doc = coerce_document(doc, field_definitions)
+                err = validate_document(doc, field_definitions)
+                if err:
+                    return jsonify({"error": f"Row {i + 1}: {err}"}), 400
+                coerced.append(doc)
+            data = coerced
 
+        result = db_schema_manager.get_collection(full_schema_name).insert_many(data)
+        return jsonify({"message": "Data inserted successfully", "inserted_ids": [str(id) for id in result.inserted_ids]}), 200
 
     except Exception as e:
         logging.error(str(e))
-        return jsonify({'message':'An error occured.'}),500
+        return jsonify({"error": str(e)}), 500
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 
@@ -249,9 +265,25 @@ def upload_file(schema):
                 data = pd.read_excel(os.path.join("uploads", filename))
 
             records = data.to_dict(orient='records')
+
+            schema_doc = next((s for s in user['schemas'] if s['name'] == schema), None)
+            strict = schema_doc.get('strict', False) if schema_doc else False
+            field_definitions = schema_doc.get('field_definitions', []) if schema_doc else []
+
+            if strict:
+                coerced = []
+                for i, row in enumerate(records):
+                    row = coerce_document(row, field_definitions)
+                    err = validate_document(row, field_definitions)
+                    if err:
+                        session.abort_transaction()
+                        return jsonify({"error": f"Row {i + 1}: {err}"}), 400
+                    coerced.append(row)
+                records = coerced
+
             if schema not in db_schema_manager.list_collection_names():
                 return jsonify({"message": f"Collection '{schema}' does not exist."}), 400
-    
+
             result = db_schema_manager.get_collection(schema).insert_many(records)
             session.commit_transaction()
             return jsonify({ "message": "Data inserted successfully",
@@ -265,8 +297,11 @@ def upload_file(schema):
         session.abort_transaction()
         return jsonify({"message": str(e)}), 500
 
-    # finally:
-    #     os.remove(os.path.join("uploads", filename))
+    finally:
+        try:
+            os.remove(os.path.join("uploads", filename))
+        except Exception:
+            pass
 
 
 @schema_manager_bp.route('/schema/<schema>/data/delete/<id>', methods=['DELETE'])
@@ -349,6 +384,104 @@ def download_xlsx(schema):
     except Exception as e:
         logging.error(str(e))
         return jsonify({"error": str(e)}), 500
+
+
+def build_mongo_filter(filter_params, field_definitions):
+    type_map = {fd['name']: fd['type'] for fd in (field_definitions or [])}
+    mongo_filter = {}
+    for key, value in filter_params.items():
+        field_type = type_map.get(key)
+        if isinstance(value, bool):
+            mongo_filter[key] = value
+        elif isinstance(value, dict):
+            clause = {}
+            if 'min' in value and value['min'] not in ('', None):
+                clause['$gte'] = float(value['min']) if field_type == 'float' else int(float(value['min']))
+            if 'max' in value and value['max'] not in ('', None):
+                clause['$lte'] = float(value['max']) if field_type == 'float' else int(float(value['max']))
+            if 'from' in value and value['from']:
+                clause['$gte'] = value['from']
+            if 'to' in value and value['to']:
+                clause['$lte'] = value['to']
+            if clause:
+                mongo_filter[key] = clause
+        elif field_type == 'string':
+            if value:
+                mongo_filter[key] = {'$regex': str(value), '$options': 'i'}
+        elif field_type in ('integer', 'float'):
+            try:
+                mongo_filter[key] = int(float(value)) if field_type == 'integer' else float(value)
+            except (ValueError, TypeError):
+                pass
+        elif field_type == 'boolean':
+            mongo_filter[key] = (str(value).lower() == 'true')
+        elif field_type == 'date':
+            if value:
+                mongo_filter[key] = str(value)
+        else:
+            if not value:
+                continue
+            try:
+                int_val = int(value)
+                mongo_filter[key] = {'$in': [int_val, str(value)]}
+            except (ValueError, TypeError):
+                try:
+                    float_val = float(value)
+                    mongo_filter[key] = {'$in': [float_val, str(value)]}
+                except (ValueError, TypeError):
+                    mongo_filter[key] = {'$regex': str(value), '$options': 'i'}
+    return mongo_filter
+
+
+def coerce_document(doc, field_definitions):
+    """Coerce string values from form/CSV inputs to their defined Python types."""
+    def to_int(v):
+        return int(float(v)) if isinstance(v, str) else v
+    def to_float(v):
+        return float(v) if isinstance(v, str) else v
+    def to_bool(v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ('true', '1', 'yes')
+        return bool(v)
+
+    coercers = {'integer': to_int, 'float': to_float, 'boolean': to_bool}
+    result = dict(doc)
+    for fd in field_definitions:
+        name, ftype = fd['name'], fd['type']
+        if name in result and result[name] is not None and result[name] != '':
+            coercer = coercers.get(ftype)
+            if coercer:
+                try:
+                    result[name] = coercer(result[name])
+                except (ValueError, TypeError):
+                    pass
+    return result
+
+
+def validate_document(doc, field_definitions):
+    defined_names = {fd['name'] for fd in field_definitions}
+    type_checkers = {
+        'string':  lambda v: isinstance(v, str),
+        'integer': lambda v: isinstance(v, int) and not isinstance(v, bool),
+        'float':   lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+        'boolean': lambda v: isinstance(v, bool),
+        'date':    lambda v: isinstance(v, str),
+    }
+    for key in doc:
+        if key == '_id':
+            continue
+        if key not in defined_names:
+            return f"Unknown field: '{key}'"
+    for fd in field_definitions:
+        name, ftype = fd['name'], fd['type']
+        if name not in doc:
+            continue
+        checker = type_checkers.get(ftype)
+        if checker and not checker(doc[name]):
+            return f"Field '{name}' expects {ftype}, got {type(doc[name]).__name__}"
+    return None
 
 
 def checkLogin():
